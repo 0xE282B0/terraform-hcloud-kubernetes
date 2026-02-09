@@ -497,7 +497,7 @@ variable "cluster_autoscaler_helm_values" {
 
 variable "cluster_autoscaler_image_tag" {
   type        = string
-  default     = "v1.33.3"
+  default     = "v1.33.4"
   description = "Version of the Cluster Autoscaler Image."
 }
 
@@ -1138,7 +1138,7 @@ variable "hcloud_ccm_helm_chart" {
 
 variable "hcloud_ccm_helm_version" {
   type        = string
-  default     = "1.29.0"
+  default     = "1.29.2"
   description = "Version of the Hcloud CCM Helm chart to deploy."
 }
 
@@ -1349,7 +1349,7 @@ variable "longhorn_helm_chart" {
 
 variable "longhorn_helm_version" {
   type        = string
-  default     = "1.10.1"
+  default     = "1.10.2"
   description = "Version of the Longhorn Helm chart to deploy."
 }
 
@@ -1393,7 +1393,7 @@ variable "cilium_helm_chart" {
 
 variable "cilium_helm_version" {
   type        = string
-  default     = "1.18.5"
+  default     = "1.18.6"
   description = "Version of the Cilium Helm chart to deploy."
 }
 
@@ -1632,7 +1632,7 @@ variable "cert_manager_helm_chart" {
 
 variable "cert_manager_helm_version" {
   type        = string
-  default     = "v1.19.2"
+  default     = "v1.19.3"
   description = "Version of the Cert Manager Helm chart to deploy."
 }
 
@@ -1664,7 +1664,7 @@ variable "ingress_nginx_helm_chart" {
 
 variable "ingress_nginx_helm_version" {
   type        = string
-  default     = "4.14.1"
+  default     = "4.14.3"
   description = "Version of the Ingress NGINX Controller Helm chart to deploy."
 }
 
@@ -1954,6 +1954,6 @@ variable "prometheus_operator_crds_enabled" {
 
 variable "prometheus_operator_crds_version" {
   type        = string
-  default     = "v0.87.1" # https://github.com/prometheus-operator/prometheus-operator
+  default     = "v0.88.1" # https://github.com/prometheus-operator/prometheus-operator
   description = "Specifies the version of the Prometheus Operator Custom Resource Definitions (CRDs) to deploy."
 }
