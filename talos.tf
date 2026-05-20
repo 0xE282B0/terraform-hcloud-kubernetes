@@ -73,7 +73,8 @@ locals {
     control_plane_nodes                 = local.control_plane_private_ipv4_list
     worker_nodes = concat(
       local.worker_private_ipv4_list,
-      local.cluster_autoscaler_private_ipv4_list
+      local.cluster_autoscaler_private_ipv4_list,
+      local.root_server_private_ipv4_list
     )
   })
 
@@ -205,6 +206,42 @@ resource "terraform_data" "upgrade_cluster_autoscaler" {
   ]
 }
 
+resource "terraform_data" "upgrade_root_server" {
+  count = var.root_server_discovery_enabled ? 1 : 0
+
+  triggers_replace = [
+    var.talos_version,
+    local.talos_schematic_id
+  ]
+
+  provisioner "local-exec" {
+    when  = create
+    quiet = true
+    command = local.cluster_initialized ? join("\n", [
+      "set -eu",
+      local.talosctl_commands,
+      "printf '%s\\n' \"Start upgrading Root Server Nodes\"",
+      templatefile("${path.module}/templates/talos_upgrade.sh.tftpl", {
+        upgrade_nodes      = local.root_server_private_ipv4_list
+        talos_version      = var.talos_version
+        talos_schematic_id = local.talos_schematic_id
+      }),
+      "printf '%s\\n' \"Root Server Nodes upgraded successfully\"",
+    ]) : "printf '%s\\n' \"Cluster not initialized, skipping Root Server Node upgrade\""
+
+    environment = {
+      TALOSCONFIG = nonsensitive(data.talos_client_configuration.this.talos_config)
+    }
+  }
+
+  depends_on = [
+    data.external.talosctl_version_check,
+    data.talos_machine_configuration.root_server,
+    terraform_data.upgrade_control_plane,
+    terraform_data.upgrade_worker
+  ]
+}
+
 resource "terraform_data" "upgrade_kubernetes" {
   triggers_replace = [
     var.kubernetes_version,
@@ -240,7 +277,8 @@ resource "terraform_data" "upgrade_kubernetes" {
     data.external.talosctl_version_check,
     terraform_data.upgrade_control_plane,
     terraform_data.upgrade_worker,
-    terraform_data.upgrade_cluster_autoscaler
+    terraform_data.upgrade_cluster_autoscaler,
+    terraform_data.upgrade_root_server
   ]
 }
 
@@ -406,6 +444,51 @@ resource "terraform_data" "talos_machine_configuration_apply_cluster_autoscaler"
   ]
 }
 
+resource "terraform_data" "talos_machine_configuration_apply_root_server" {
+  count = var.root_server_discovery_enabled ? 1 : 0
+
+  triggers_replace = [
+    nonsensitive(sha1(jsonencode({
+      for k, v in data.talos_machine_configuration.root_server :
+      k => v.machine_configuration
+    })))
+  ]
+
+  provisioner "local-exec" {
+    when  = create
+    quiet = true
+    command = join("\n", [
+      "set -eu",
+      local.talosctl_commands,
+      templatefile("${path.module}/templates/talos_apply_config.sh.tftpl", {
+        target_nodes                                  = local.root_server_private_ipv4_list
+        apply_mode                                    = var.talos_machine_configuration_apply_mode
+        staged_configuration_automatic_reboot_enabled = local.talos_staged_configuration_automatic_reboot_enabled
+        healthcheck_enabled                           = local.cluster_initialized
+      })
+    ])
+
+    environment = merge(
+      { TALOSCONFIG = nonsensitive(data.talos_client_configuration.this.talos_config) },
+      {
+        for server in local.talos_discovery_root_server :
+        "TALOS_MC_${replace(server.private_ipv4_address, ".", "_")}" =>
+        nonsensitive(data.talos_machine_configuration.root_server[server.nodepool].machine_configuration)
+      }
+    )
+  }
+
+  depends_on = [
+    data.external.talosctl_version_check,
+    terraform_data.upgrade_kubernetes,
+    talos_machine_configuration_apply.control_plane,
+    talos_machine_configuration_apply.worker,
+    terraform_data.talos_staged_configuration_reboot_control_plane,
+    terraform_data.talos_staged_configuration_reboot_worker,
+    terraform_data.talos_machine_configuration_apply_cluster_autoscaler
+  ]
+}
+
 resource "talos_machine_bootstrap" "this" {
   client_configuration = talos_machine_secrets.this.client_configuration
   endpoint             = local.talos_primary_endpoint
@@ -416,7 +499,8 @@ resource "talos_machine_bootstrap" "this" {
     talos_machine_configuration_apply.worker,
     terraform_data.talos_staged_configuration_reboot_control_plane,
     terraform_data.talos_staged_configuration_reboot_worker,
-    terraform_data.talos_machine_configuration_apply_cluster_autoscaler
+    terraform_data.talos_machine_configuration_apply_cluster_autoscaler,
+    terraform_data.talos_machine_configuration_apply_root_server
   ]
 }
 
@@ -455,7 +539,8 @@ resource "terraform_data" "synchronize_manifests" {
     talos_machine_configuration_apply.worker,
     terraform_data.talos_staged_configuration_reboot_control_plane,
     terraform_data.talos_staged_configuration_reboot_worker,
-    terraform_data.talos_machine_configuration_apply_cluster_autoscaler
+    terraform_data.talos_machine_configuration_apply_cluster_autoscaler,
+    terraform_data.talos_machine_configuration_apply_root_server
   ]
 }
 

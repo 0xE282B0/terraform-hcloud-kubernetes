@@ -39,6 +39,12 @@ output "talos_machine_configurations_worker" {
   sensitive   = true
 }
 
+output "talos_machine_configurations_root_server" {
+  description = "Talos machine configuration templates for root server node pools, keyed by nodepool name. Each template includes VLAN interface pre-configuration (bond0 + vlan_id) and cluster connectivity. Before applying to a specific node, add a static VLAN IP address via root_server_config_patches or by patching the output. Node hostnames must follow '<cluster_name>-<nodepool_name>-<suffix>' for discovery to work."
+  value       = data.talos_machine_configuration.root_server
+  sensitive   = true
+}
+
 output "control_plane_private_ipv4_list" {
   description = "List of private IPv4 addresses assigned to control plane nodes."
   value       = local.control_plane_private_ipv4_list

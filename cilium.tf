@@ -96,7 +96,9 @@ data "helm_template" "cilium" {
         enabled = var.cilium_egress_gateway_enabled
       }
       loadBalancer = {
-        acceleration = var.cilium_load_balancer_acceleration
+        # BPF native acceleration bypasses the routing table and is incompatible with
+        # vSwitch-attached root servers. Downgrade to best-effort automatically.
+        acceleration = local.root_server_enabled && var.cilium_load_balancer_acceleration == "native" ? "best-effort" : var.cilium_load_balancer_acceleration
       }
       gatewayAPI = {
         enabled               = var.cilium_gateway_api_enabled
