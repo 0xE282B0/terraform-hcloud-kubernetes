@@ -40,6 +40,11 @@ locals {
   cluster_autoscaler_public_ipv4_list  = compact(distinct([for server in local.talos_discovery_cluster_autoscaler : server.public_ipv4_address]))
   cluster_autoscaler_public_ipv6_list  = compact(distinct([for server in local.talos_discovery_cluster_autoscaler : server.public_ipv6_address]))
   cluster_autoscaler_private_ipv4_list = compact(distinct([for server in local.talos_discovery_cluster_autoscaler : server.private_ipv4_address]))
+
+  # Lists for root server nodes (populated via discovery after cluster initialisation)
+  root_server_public_ipv4_list  = compact(distinct([for server in local.talos_discovery_root_server : server.public_ipv4_address]))
+  root_server_public_ipv6_list  = compact(distinct([for server in local.talos_discovery_root_server : server.public_ipv6_address]))
+  root_server_private_ipv4_list = compact(distinct([for server in local.talos_discovery_root_server : server.private_ipv4_address]))
 }
 
 data "hcloud_location" "this" {
@@ -55,9 +60,10 @@ data "hcloud_network" "this" {
 resource "hcloud_network" "this" {
   count = length(data.hcloud_network.this) > 0 ? 0 : 1
 
-  name              = var.cluster_name
-  ip_range          = local.network_ipv4_cidr
-  delete_protection = var.cluster_delete_protection
+  name                     = var.cluster_name
+  ip_range                 = local.network_ipv4_cidr
+  delete_protection        = var.cluster_delete_protection
+  expose_routes_to_vswitch = local.root_server_enabled
 
   labels = {
     cluster = var.cluster_name
@@ -117,5 +123,21 @@ resource "hcloud_network_subnet" "autoscaler" {
     hcloud_network_subnet.control_plane,
     hcloud_network_subnet.load_balancer,
     hcloud_network_subnet.worker
+  ]
+}
+
+resource "hcloud_network_subnet" "root_server" {
+  for_each = { for np in local.root_server_nodepools : np.name => np }
+
+  network_id = local.hcloud_network_id
+  type       = "vswitch"
+  vswitch_id = each.value.vswitch_id
+  ip_range   = each.value.ip_range
+
+  depends_on = [
+    hcloud_network_subnet.control_plane,
+    hcloud_network_subnet.load_balancer,
+    hcloud_network_subnet.worker,
+    hcloud_network_subnet.autoscaler
   ]
 }

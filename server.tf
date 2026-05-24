@@ -180,10 +180,50 @@ locals {
       )
     }
   } : {}
+
+  # Hostname pattern for root server nodes: <cluster>-<nodepool>-<any suffix>
+  # Nodes must be named following this convention via their Talos machine config.
+  root_server_hostname_pattern = local.root_server_enabled ? "^${var.cluster_name}-(${join("|", distinct([for np in local.root_server_nodepools : np.name]))})-.+$" : "^$"
+
+  talos_discovery_root_server = var.root_server_discovery_enabled ? {
+    for m in jsondecode(data.external.talos_member[0].result.root_server) : m.spec.hostname => {
+      nodepool = regex(local.root_server_hostname_pattern, m.spec.hostname)[0]
+
+      private_ipv4_address = try(
+        [
+          for a in m.spec.addresses : a
+          if can(cidrnetmask("${a}/32"))
+          && can(regex(local.ipv4_private_pattern, a))
+        ][0], null
+      )
+      public_ipv4_address = try(
+        [
+          for a in m.spec.addresses : a
+          if can(cidrnetmask("${a}/32"))
+          && !can(regex(local.ipv4_private_pattern, a))
+          && !can(regex(local.ipv4_special_pattern, a))
+        ][0], null
+      )
+      private_ipv6_address = try(
+        [
+          for a in m.spec.addresses : lower(a)
+          if can(cidrsubnet("${a}/128", 0, 0))
+          && can(regex(local.ipv6_private_pattern, lower(a)))
+        ][0], null
+      )
+      public_ipv6_address = try(
+        [
+          for a in m.spec.addresses : lower(a)
+          if can(cidrsubnet("${a}/128", 0, 0))
+          && !can(regex(local.ipv6_non_public_pattern, lower(a)))
+        ][0], null
+      )
+    }
+  } : {}
 }
 
 data "external" "talos_member" {
-  count = var.cluster_autoscaler_discovery_enabled ? 1 : 0
+  count = (var.cluster_autoscaler_discovery_enabled || var.root_server_discovery_enabled) ? 1 : 0
 
   program = [
     "sh", "-c", <<-EOT
@@ -203,12 +243,19 @@ data "external" "talos_member" {
               map(select(
                 .spec.machineType == "worker"
                 and (.spec.hostname | test("${local.cluster_autoscaler_hostname_pattern}") | not)
+                and (.spec.hostname | test("${local.root_server_hostname_pattern}") | not)
               )) | tostring
             ),
             cluster_autoscaler: (
               map(select(
                 .spec.machineType == "worker"
                 and (.spec.hostname | test("${local.cluster_autoscaler_hostname_pattern}"))
+              )) | tostring
+            ),
+            root_server: (
+              map(select(
+                .spec.machineType == "worker"
+                and (.spec.hostname | test("${local.root_server_hostname_pattern}"))
               )) | tostring
             )
           }'
@@ -217,7 +264,7 @@ data "external" "talos_member" {
           exit 1
         fi
       else
-        printf '%s\n' '{"control_plane":"[]","cluster_autoscaler":"[]","worker":"[]"}'
+        printf '%s\n' '{"control_plane":"[]","cluster_autoscaler":"[]","worker":"[]","root_server":"[]"}'
       fi
     EOT
   ]
@@ -231,6 +278,7 @@ data "external" "talos_member" {
     data.external.talosctl_version_check,
     data.talos_machine_configuration.control_plane,
     data.talos_machine_configuration.worker,
-    data.talos_machine_configuration.cluster_autoscaler
+    data.talos_machine_configuration.cluster_autoscaler,
+    data.talos_machine_configuration.root_server
   ]
 }

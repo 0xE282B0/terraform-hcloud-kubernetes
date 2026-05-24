@@ -84,9 +84,30 @@ locals {
     }
   ]
 
+  root_server_nodepools = [
+    for np in var.root_server_nodepools : {
+      name       = np.name
+      vswitch_id = np.vswitch_id
+      vlan_id    = np.vlan_id
+      ip_range   = np.ip_range
+      labels = merge(
+        np.labels,
+        { nodepool = np.name }
+      )
+      annotations = np.annotations
+      taints = [for taint in np.taints : regex(
+        "^(?P<key>[^=:]+)=?(?P<value>[^=:]*?):(?P<effect>.+)$",
+        taint
+      )]
+    }
+  ]
+
   control_plane_nodepools_map      = { for np in local.control_plane_nodepools : np.name => np }
   worker_nodepools_map             = { for np in local.worker_nodepools : np.name => np }
   cluster_autoscaler_nodepools_map = { for np in local.cluster_autoscaler_nodepools : np.name => np }
+  root_server_nodepools_map        = { for np in local.root_server_nodepools : np.name => np }
+
+  root_server_enabled = length(local.root_server_nodepools) > 0
 
   control_plane_sum = sum(concat(
     [for np in local.control_plane_nodepools : np.count], [0]

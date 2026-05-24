@@ -529,6 +529,45 @@ variable "cluster_autoscaler_discovery_enabled" {
   description = "Enable rolling upgrades of Cluster Autoscaler nodes during Talos OS upgrades and Talos configuration changes."
 }
 
+# Root Server (Dedicated Server via vSwitch)
+variable "root_server_nodepools" {
+  type = list(object({
+    name        = string
+    vswitch_id  = number
+    vlan_id     = optional(number, 4000)
+    ip_range    = string
+    labels      = optional(map(string), {})
+    annotations = optional(map(string), {})
+    taints      = optional(list(string), [])
+  }))
+  default     = []
+  description = "Defines configuration settings for root server (dedicated server) node pools that connect to the cluster via Hetzner vSwitch. Each nodepool requires a unique name, the numeric vSwitch ID, the VLAN ID (default 4000), and the IP range for the vSwitch subnet. The generated machine configuration template must be customised per-node to add a static VLAN IP address before applying."
+
+  validation {
+    condition     = length(var.root_server_nodepools) == length(distinct([for np in var.root_server_nodepools : np.name]))
+    error_message = "Root server nodepool names must be unique to avoid configuration conflicts."
+  }
+
+  validation {
+    condition = alltrue([
+      for np in var.root_server_nodepools : length(var.cluster_name) + length(np.name) <= 56
+    ])
+    error_message = "The combined length of the cluster name and any root server nodepool name must not exceed 56 characters."
+  }
+}
+
+variable "root_server_config_patches" {
+  type        = any
+  default     = []
+  description = "List of configuration patches applied to all root server node pools. Use this to add per-node VLAN IP address configuration."
+}
+
+variable "root_server_discovery_enabled" {
+  type        = bool
+  default     = false
+  description = "Enable rolling upgrades of root server nodes during Talos OS upgrades and Talos configuration changes. Requires root_server_nodepools to be configured and nodes to follow the naming convention '<cluster_name>-<nodepool_name>-<suffix>'."
+}
+
 
 # Packer
 variable "packer_amd64_builder" {
